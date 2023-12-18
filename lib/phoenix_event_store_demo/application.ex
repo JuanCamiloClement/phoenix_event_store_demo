@@ -10,14 +10,16 @@ defmodule PhoenixEventStoreDemo.Application do
     children = [
       PhoenixEventStoreDemoWeb.Telemetry,
       PhoenixEventStoreDemo.Repo,
-      {DNSCluster, query: Application.get_env(:phoenix_event_store_demo, :dns_cluster_query) || :ignore},
+      {DNSCluster,
+       query: Application.get_env(:phoenix_event_store_demo, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: PhoenixEventStoreDemo.PubSub},
       # Start the Finch HTTP client for sending emails
       {Finch, name: PhoenixEventStoreDemo.Finch},
       # Start a worker by calling: PhoenixEventStoreDemo.Worker.start_link(arg)
       # {PhoenixEventStoreDemo.Worker, arg},
       # Start to serve requests, typically the last entry
-      PhoenixEventStoreDemoWeb.Endpoint
+      PhoenixEventStoreDemoWeb.Endpoint,
+      PhoenixEventStoreDemo.EventStoreDbClient
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

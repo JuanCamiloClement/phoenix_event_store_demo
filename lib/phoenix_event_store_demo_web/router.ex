@@ -6,7 +6,7 @@ defmodule PhoenixEventStoreDemoWeb.Router do
     plug :fetch_session
     plug :fetch_live_flash
     plug :put_root_layout, html: {PhoenixEventStoreDemoWeb.Layouts, :root}
-    plug :protect_from_forgery
+    # plug :protect_from_forgery
     plug :put_secure_browser_headers
   end
 
@@ -18,6 +18,12 @@ defmodule PhoenixEventStoreDemoWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/something", CartController, :get_cart
+    post "/create", CartController, :create
+    post "/add-item", CartController, :add_item
+    put "/update-item-quantity", CartController, :update_item_quantity
+    delete "/remove-item/:name", CartController, :remove_item
+    delete "/empty-cart", CartController, :empty_cart
   end
 
   # Other scopes may use custom stacks.
