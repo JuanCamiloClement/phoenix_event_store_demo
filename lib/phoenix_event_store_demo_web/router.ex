@@ -19,10 +19,12 @@ defmodule PhoenixEventStoreDemoWeb.Router do
 
     get "/", PageController, :home
     get "/something", CartController, :get_cart
-    post "/create", CartController, :create
+    get "/create", CartController, :create
     post "/add-item", CartController, :add_item
+    post "/add-coupon", CartController, :add_discount_coupon
     put "/update-item-quantity", CartController, :update_item_quantity
     delete "/remove-item/:name", CartController, :remove_item
+    delete "/remove-coupon/:coupon", CartController, :remove_discount_coupon
     delete "/empty-cart", CartController, :empty_cart
   end
 
