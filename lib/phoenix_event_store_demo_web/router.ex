@@ -18,7 +18,7 @@ defmodule PhoenixEventStoreDemoWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/something", CartController, :print_cart
+    get "/something", CartController, :calculate_cart_total
     get "/create", CartController, :create
     post "/add-item", CartController, :add_item
     post "/add-coupon", CartController, :add_discount_coupon

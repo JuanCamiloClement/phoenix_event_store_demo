@@ -3,53 +3,86 @@ defmodule PhoenixEventStoreDemoWeb.CartController do
   use Spear.Client
 
   alias PhoenixEventStoreDemo.EventStoreDbClient
-  alias PhoenixEventStoreDemo.ShoppingCart
 
-  @spec print_cart(Plug.Conn.t(), any()) :: Plug.Conn.t()
-  def print_cart(conn, _params) do
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    IO.inspect(ShoppingCart.build_cart_from_stream(stream))
-    IO.inspect(ShoppingCart.calculate_cart_total(stream))
+  def calculate_cart_total(conn, _params) do
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    IO.inspect(build_cart_from_stream(stream))
 
     send_resp(conn, 200, "OK")
   end
 
   def create(conn, _params) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.create(current_cart)
-
-    if event do
-      EventStoreDbClient.append([event], "CartForUser11")
+    if current_cart == %{} do
+      event = Spear.Event.new("CartCreated", %{"items" => [], "coupon" => nil})
+      EventStoreDbClient.append([event], "CartForUser7")
       send_resp(conn, 200, "Cart created")
     else
       send_resp(conn, 200, "Cart is already created")
     end
   end
 
-  def add_item(conn, %{"name" => _name, "price" => _price, "amount" => _amount} = params) do
+  def add_item(conn, %{"name" => name, "price" => _price, "amount" => _amount} = params) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.add_item(current_cart, params)
+    event =
+      case Enum.find(current_cart["items"], &(&1["name"] == name)) do
+        nil ->
+          Spear.Event.new("ItemAdded", params)
 
-    EventStoreDbClient.append([event], "CartForUser11")
+        item ->
+          Spear.Event.new("ItemQuantityIncreased", %{
+            "name" => item["name"],
+            "previousAmount" => item["amount"],
+            "newAmount" => item["amount"] + 1
+          })
+      end
+
+    EventStoreDbClient.append([event], "CartForUser7")
 
     send_resp(conn, 200, "OK")
   end
 
-  def update_item_quantity(conn, %{"name" => _name, "amount" => _amount} = params) do
+  def update_item_quantity(conn, %{"name" => name, "amount" => amount}) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.update_item_quantity(current_cart, params)
+    item =
+      Enum.find(current_cart["items"], &(&1["name"] == name))
+
+    event =
+      cond do
+        amount == 0 ->
+          Spear.Event.new("ItemRemoved", %{
+            "name" => item["name"]
+          })
+
+        item["amount"] < amount ->
+          Spear.Event.new("ItemQuantityIncreased", %{
+            "name" => item["name"],
+            "previousAmount" => item["amount"],
+            "newAmount" => amount
+          })
+
+        item["amount"] > amount ->
+          Spear.Event.new("ItemQuantityDecreased", %{
+            "name" => item["name"],
+            "previousAmount" => item["amount"],
+            "newAmount" => amount
+          })
+
+        item["amount"] == amount ->
+          nil
+      end
 
     if event do
-      EventStoreDbClient.append([event], "CartForUser11")
+      EventStoreDbClient.append([event], "CartForUser7")
       send_resp(conn, 200, "Item amount updated")
     else
       send_resp(conn, 200, "Item amount is the same as saved amount")
@@ -58,13 +91,12 @@ defmodule PhoenixEventStoreDemoWeb.CartController do
 
   def remove_item(conn, %{"name" => name}) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.remove_item(current_cart, name)
-
-    if event do
-      EventStoreDbClient.append([event], "CartForUser11")
+    if Enum.find(current_cart["items"], &(&1["name"] == name)) do
+      event = Spear.Event.new("ItemRemoved", %{"name" => name})
+      EventStoreDbClient.append([event], "CartForUser7")
       send_resp(conn, 200, "Item removed from cart")
     else
       send_resp(conn, 404, "Item not in cart")
@@ -73,28 +105,26 @@ defmodule PhoenixEventStoreDemoWeb.CartController do
 
   def empty_cart(conn, _params) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.empty_cart(current_cart)
-
-    if event do
-      EventStoreDbClient.append([event], "CartForUser11")
-      send_resp(conn, 200, "Cart emptied")
-    else
+    if current_cart["items"] == [] do
       send_resp(conn, 200, "Cart is already empty")
+    else
+      event = Spear.Event.new("CartEmptied", [])
+      EventStoreDbClient.append([event], "CartForUser7")
+      send_resp(conn, 200, "Cart emptied")
     end
   end
 
   def add_discount_coupon(conn, %{"coupon" => coupon}) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.add_discount_coupon(current_cart, coupon)
-
-    if event do
-      EventStoreDbClient.append([event], "CartForUser11")
+    if !current_cart["coupon"] do
+      event = Spear.Event.new("CouponAdded", %{"percentage" => coupon})
+      EventStoreDbClient.append([event], "CartForUser7")
       send_resp(conn, 200, "Coupon added")
     else
       send_resp(conn, 200, "User already has an applied coupon")
@@ -103,16 +133,78 @@ defmodule PhoenixEventStoreDemoWeb.CartController do
 
   def remove_discount_coupon(conn, _params) do
     # Get current cart
-    stream = EventStoreDbClient.stream!("CartForUser11")
-    current_cart = ShoppingCart.build_cart_from_stream(stream)
+    stream = EventStoreDbClient.stream!("CartForUser7")
+    current_cart = build_cart_from_stream(stream)
 
-    event = ShoppingCart.remove_discount_coupon(current_cart)
-
-    if event do
-      EventStoreDbClient.append([event], "CartForUser11")
+    if current_cart["coupon"] do
+      event = Spear.Event.new("CouponRemoved", %{"coupon" => current_cart["coupon"]})
+      EventStoreDbClient.append([event], "CartForUser7")
       send_resp(conn, 200, "Coupon removed")
     else
       send_resp(conn, 200, "User has no coupon to be removed")
     end
+  end
+
+  def build_cart_from_stream(stream) do
+    Enum.reduce(stream, %{}, fn current_event, acc ->
+      case current_event.type do
+        "CartCreated" ->
+          current_event.body
+
+        "ItemAdded" ->
+          Map.put(acc, "items", [current_event.body | acc["items"]])
+
+        "ItemQuantityIncreased" ->
+          %{"price" => price} =
+            Enum.find(acc["items"], &(&1["name"] == current_event.body["name"]))
+
+          filtered_list =
+            Enum.filter(acc["items"], &(&1["name"] != current_event.body["name"]))
+
+          Map.put(acc, "items", [
+            %{
+              "name" => current_event.body["name"],
+              "price" => price,
+              "amount" => current_event.body["newAmount"]
+            }
+            | filtered_list
+          ])
+
+        "ItemQuantityDecreased" ->
+          %{"price" => price} =
+            Enum.find(acc["items"], &(&1["name"] == current_event.body["name"]))
+
+          filtered_list =
+            Enum.filter(acc["items"], &(&1["name"] != current_event.body["name"]))
+
+          Map.put(acc, "items", [
+            %{
+              "name" => current_event.body["name"],
+              "price" => price,
+              "amount" => current_event.body["newAmount"]
+            }
+            | filtered_list
+          ])
+
+        "ItemRemoved" ->
+          Map.put(
+            acc,
+            "items",
+            Enum.filter(acc["items"], &(&1["name"] != current_event.body["name"]))
+          )
+
+        "CartEmptied" ->
+          Map.put(acc, "items", [])
+
+        "CouponAdded" ->
+          Map.put(acc, "coupon", current_event.body)
+
+        "CouponRemoved" ->
+          Map.put(acc, "coupon", nil)
+
+        _ ->
+          acc
+      end
+    end)
   end
 end
